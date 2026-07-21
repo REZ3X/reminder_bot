@@ -194,7 +194,7 @@ You may also configure a custom domain on Vercel if desired.
 
 ### 5.1 Import Intents
 
-1. Download the intent CSV file: [`intent_reminder.csv`](misc/intent/intent_reminder.csv)
+1. Download the intent CSV file: [`intent_reminder.csv`](chatbot/intent/intent_reminder.csv)
 2. Open and log in to [Botika Platform v2](https://platform.botika.online/app).
 3. Create a **new blank rule**.
 4. Copy the **Rule ID** from the URL: `https://platform.botika.online/app/graph/<ruleID>`
