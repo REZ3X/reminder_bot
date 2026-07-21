@@ -15,12 +15,25 @@ function unwrap(value: unknown): string | undefined {
   return String(value);
 }
 
+function isEmpty(value: unknown): boolean {
+  if (value == null) return true;
+  const str = String(value).trim().toLowerCase();
+  return (
+    str === '' ||
+    str === 'null' ||
+    str === 'undefined' ||
+    str === '[]' ||
+    str === '[""]' ||
+    str === 'nan'
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const id = unwrap(body.id);
 
-    if (!id || id === 'null') {
+    if (isEmpty(id)) {
       return NextResponse.json(
         { success: false, error: 'Missing or invalid reminder id' },
         { status: 400 }
