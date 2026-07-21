@@ -968,6 +968,9 @@ Deletes a reminder event from Google Calendar.
 - **`reminders_list` variable is persistence-dependent**
   The `reminders_list` variable is only populated/updated when the user goes through the `usr.reminderList` branch (i.e., explicitly lists/shows their reminders). If a user tries to directly edit or delete a reminder without listing it first, `reminders_list` may be stale, empty, or mismatched, causing the `id` matching in the Edit/Delete `Grab Context` steps to fail or resolve to the wrong reminder.
 
+- **No API Key Setup**
+  This backend proxy still does not implement any API key or authentication mechanism. All endpoints are publicly accessible once deployed. Authentication will be added in a future update.
+
 ---
 
 ## Working Bot Footage
