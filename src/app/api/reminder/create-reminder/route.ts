@@ -16,6 +16,19 @@ function unwrap(value: unknown): string {
   return String(value);
 }
 
+function isEmpty(value: unknown): boolean {
+  if (value == null) return true;
+  const str = String(value).trim().toLowerCase();
+  return (
+    str === '' ||
+    str === 'null' ||
+    str === 'undefined' ||
+    str === '[]' ||
+    str === '[""]' ||
+    str === 'nan'
+  );
+}
+
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -31,6 +44,9 @@ export async function POST(request: NextRequest) {
     const cleanStartTime = unwrap(start_time);
     const cleanEndTime = unwrap(end_time);
 
+    const cleanSummaryRaw = summary != null ? unwrap(summary) : '';
+    const cleanSummary = isEmpty(cleanSummaryRaw) ? 'Reminder' : cleanSummaryRaw;
+
     const auth = new google.auth.GoogleAuth({
       credentials: {
         client_email: process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
@@ -42,7 +58,7 @@ export async function POST(request: NextRequest) {
     const calendar = google.calendar({ version: 'v3', auth });
 
     const event = {
-      summary: summary || 'Reminder',
+      summary: cleanSummary,
       start: {
         dateTime: cleanStartTime,
         timeZone: timeZone || 'Asia/Jakarta',
