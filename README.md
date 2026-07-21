@@ -278,58 +278,450 @@ The following table describes the key workflow nodes used in this project. Click
 
 ##### B. Intent Branches
 
+---
+
 ###### B.1 — `usr.reminderCreate` Branch
 
-| Step | Node Type | Label | Description |
-|------|-----------|-------|-------------|
-| 1 | Agent Assistant | `Grab Context` | <!-- TODO: Fill description --> |
-| 2 | Entity LLM | `Retrieve Data` | <!-- TODO: Fill description --> |
-| 3 | Set User Variable | `Save Data` | <!-- TODO: Fill description --> |
-| 4 | HTTP Request | `Create API` | <!-- TODO: Fill description --> |
-| 5 | Agent Assistant | `Response Formatting` | <!-- TODO: Fill description --> |
+**Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a data retrieval engine for calendar reminder requests. Extract ONLY the following fields from `{{user.message}}`. Do not generate any explanation, confirmation, or elaborating text — output structured data only.
+>
+> **Fields to retrieve:**
+>
+> | Field | Rules | Output Format |
+> |-------|-------|---------------|
+> | `date` | Extract user's intended date, resolve relative expressions using `{{date}}` as anchor. If not mentioned, `null`. | `yyyy-mm-dd` |
+> | `start_time` | Extract the first time mentioned. Combine with resolved date. If not mentioned, `null`. | `yyyy-mm-ddThh:mm:ss` |
+> | `end_time` | Default: `start_time` + 15 minutes, unless user specifies duration/end time. If `start_time` is `null`, this is also `null`. | `yyyy-mm-ddThh:mm:ss` |
+> | `summary` | Extract reminder subject in title case. Strip filler/intent phrasing. Keep user's language. If no subject, `null`. | String (title case) |
+> | `reference_datetime` | Always `{{datetime}}`. Not user-extracted. | `yyyy-mm-ddThh:mm:ss` |
+
+**Step 2.** Connect to a new **Entity LLM** node (label: `Retrieve Data`).
+
+| Field Name | Description | Example |
+|------------|-------------|---------|
+| `date` | Date intended by the user to set the reminder/event | `2007-06-17` |
+| `start_time` | Start time defined by user | `2007-06-17 10:18:47` |
+| `end_time` | End time defined by user (could be empty or null) | `2007-06-17 10:18:47` |
+| `reference_datetime` | Fixed by datetime | `2007-06-17 10:18:47` |
+| `summary` | Summary described by the user (goal of the reminder) | — |
+
+**Step 3.** Connect to a new **Set User Variable** node (label: `Save Data`).
+
+| Type | Variable Name | Value |
+|------|---------------|-------|
+| String | `user_date` | `{{node_output.date}}` |
+| String | `start_time` | `{{node_output.start_time}}` |
+| String | `end_time` | `{{node_output.end_time}}` |
+| String | `reference_datetime` | `{{node_output.reference_datetime}}` |
+| String | `summary` | `{{node_output.summary}}` |
+
+**Step 4.** Connect to a new **HTTP Request** node (label: `Create API`).
+
+- **URL**: `https://<your-domain>/api/reminder/create-reminder`
+- **Body**:
+
+```json
+{
+  "summary": "{{summary}}",
+  "end_time": "{{end_time}}",
+  "timeZone": "Asia/Jakarta",
+  "start_time": "{{start_time}}"
+}
+```
+
+**Step 5.** Connect to a new **Agent Assistant** node (label: `Response Formatting`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a strict, deterministic response generator. You do NOT have creative freedom. You must follow the exact rule below with no exceptions.
+>
+> **INPUT:** `{{node_output.status_code}}`
+>
+> **RULE (follow exactly, no deviation):**
+> - IF `status_code == 200` → output ONLY the fixed success message below, translated to match the user's language (`{{user.message}}`). Do not add, remove, or rephrase anything else.
+> - IF `status_code != 200` → output ONLY the fixed error message below, translated to match the user's language. Do not add, remove, or rephrase anything else.
+>
+> **FIXED SUCCESS MESSAGE:**
+> - Indonesian: "Reminder telah dibuat."
+> - English: "Reminder has been created."
+>
+> **FIXED ERROR MESSAGE:**
+> - Indonesian: "Maaf kak, ada kendala. Boleh coba ulangi lagi?"
+> - English: "Sorry, something went wrong. Could you try again?"
+>
+> **ABSOLUTE RESTRICTIONS:**
+> - Do NOT ask the user to rephrase, reformat, or clarify their original message, regardless of what the original message looked like.
+> - Do NOT reference or comment on the user's original phrasing, format, or wording in any way.
+> - Do NOT suggest example sentences or templates.
+> - Do NOT add explanations, reasoning, apologies beyond the fixed error message, or any extra sentence.
+> - Your ONLY job is to check status_code and output ONE of the two fixed messages, translated. Nothing else exists in your task.
+> - If you feel the urge to add clarifying guidance, suppress it — that is not your role in this step.
+>
+> **OUTPUT:** One sentence only. No greeting, no elaboration, no follow-up question.
+
+---
 
 ###### B.2 — `usr.reminderEdit` Branch
 
-| Step | Node Type | Label | Description |
-|------|-----------|-------|-------------|
-| 1 | Agent Assistant | `Grab Context` | <!-- TODO: Fill description --> |
-| 2 | Entity LLM | `Retrieve Data` | <!-- TODO: Fill description --> |
-| 3 | Set User Variable | `Save Data` | <!-- TODO: Fill description --> |
-| 4 | HTTP Request | `Edit API` | <!-- TODO: Fill description --> |
-| 5 | Agent Assistant | `Response Formatting` | <!-- TODO: Fill description --> |
+**Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a data retrieval engine for calendar reminder edit requests. Match the user's message to the correct reminder from the provided list, extract its ID, and extract any new values the user wants to change. Do not generate any explanation, confirmation, or elaborating text — output structured data only.
+>
+> **INPUT CONTEXT:**
+> - User's message: `{{user.message}}`
+> - Available reminders (raw list from the system): `{{reminders_list}}`
+>   Each item has: `id`, `summary`, `start`, `end`, `status`
+>   IMPORTANT: the order of items in this list reflects the exact numbered order the user was shown (item 1 = first in list, item 2 = second in list, and so on).
+> - Current date/time anchor: `{{datetime}}`
+>
+> **TASK — Step 1: Identify the target reminder**
+> - Identify which reminder the user wants to edit, using ANY of the following reference types:
+>   1. Positional/ordinal reference — e.g. "nomor 2", "yang kedua", "reminder ke-3", "the second one", "number 1". Use this ONLY to locate WHICH ITEM in the list the user means (by counting position) — never output the position number itself.
+>   2. Content reference — matching against `summary` text (e.g. "meeting sama klien" → "Meeting Sama Klien").
+>   3. Date/time reference — matching against `start`/`end` (e.g. "yang jam 8 pagi" → a reminder starting at 08:00, "yang besok" → a reminder on tomorrow's date).
+>   4. Combined references — e.g. "yang kedua yang meeting itu" combines positional + content, both should point to the same item for a confident match.
+>
+> **CRITICAL OUTPUT RULE — READ CAREFULLY:**
+> - The `id` field in your output must ALWAYS be the exact value of that item's `id` property from `{{reminders_list}}` — a long alphanumeric string (e.g. `2ksvcdivbo5ueo40ln7t53kai0`).
+> - NEVER output a position number (like "1", "2", "3") as the id, even if the user referred to the reminder by its position.
+> - The position/ordinal reference is only used internally to FIND the correct item — the actual `id` property of THAT item is what gets returned.
+>
+> **EXAMPLE:**
+> Given this reminders_list:
+> ```json
+> [
+>   {"id": "g1gguuk0tbpkhqvv83nhmo3g9c", "summary": "Test", ...},
+>   {"id": "2ksvcdivbo5ueo40ln7t53kai0", "summary": "Main", ...}
+> ]
+> ```
+> User says: "edit reminder nomor 2, ubah jadi jam 3 sore"
+> → "nomor 2" refers to the 2nd item in the list
+> → The 2nd item's actual id is `2ksvcdivbo5ueo40ln7t53kai0`
+> → Correct id output: `2ksvcdivbo5ueo40ln7t53kai0`
+> → WRONG output (do not do this): `2`
+>
+> **TASK — Step 2: Extract the requested changes**
+> - `new_summary`: the new subject/title, only if the user explicitly wants to change what the reminder is about. Otherwise `null`.
+> - `new_date`: the new date, however phrased (e.g. "besok", "next Monday"), resolved using `{{datetime}}` as anchor. Output format: `yyyy-mm-dd`. Only if user wants to change the date. Otherwise `null`.
+> - `new_start_time`: the new start time, combined with `new_date` (or the reminder's existing date if `new_date` is `null`) to form a full timestamp. Output format: `yyyy-mm-ddThh:mm:ss`. Only if user wants to change the time. Otherwise `null`.
+> - `new_end_time`: only if user explicitly specifies a new duration or end time. Output format: `yyyy-mm-ddThh:mm:ss`. Otherwise `null`.
+>
+> **RULES:**
+> - If exactly one reminder clearly matches, return its ACTUAL `id` property value (never a position number). Otherwise return `id: null` and list possible matches (actual id values) in `candidates`.
+> - If the user gives a positional reference that is out of range for the list (e.g. list only has 1 item but user said "nomor 3"), return `id: null` and `candidates: []`.
+> - Only populate change fields (`new_summary`, `new_date`, `new_start_time`, `new_end_time`) with what the user explicitly stated. Do not infer or assume changes that weren't mentioned.
+> - If the user's message contains no identifiable change at all (just identifies which reminder, without saying what to change), leave all change fields `null`.
+> - Do not fabricate an `id` that isn't present in `{{reminders_list}}`.
+> - No natural language response. No greeting. No confirmation message. Output data only.
+>
+> **OUTPUT FORMAT (strict JSON):**
+> ```json
+> {
+>   "id": "string" | null,
+>   "candidates": ["string", ...],
+>   "new_summary": "string" | null,
+>   "new_date": "yyyy-mm-dd" | null,
+>   "new_start_time": "yyyy-mm-ddThh:mm:ss" | null,
+>   "new_end_time": "yyyy-mm-ddThh:mm:ss" | null
+> }
+> ```
+
+**Step 2.** Connect to a new **Entity LLM** node (label: `Retrieve Data`).
+
+| Field Name | Description | Example |
+|------------|-------------|---------|
+| `new_date` | Updated date intended by the user | `2007-06-17` |
+| `new_start_time` | Updated start time defined by user | `2007-06-17 10:18:47` |
+| `new_end_time` | Updated end time (could be empty or null) | `2007-06-17 10:18:47` |
+| `reference_datetime` | Fixed by datetime | `2007-06-17 10:18:47` |
+| `new_summary` | Updated summary described by the user | — |
+| `id` | Reminder ID | — |
+| `candidate` | Reminder candidate(s) | — |
+
+**Step 3.** Connect to a new **Set User Variable** node (label: `Save Data`).
+
+| Type | Variable Name | Value |
+|------|---------------|-------|
+| String | `new_user_date` | `{{node_output.new_date}}` |
+| String | `new_start_time` | `{{node_output.new_start_time}}` |
+| String | `new_end_time` | `{{node_output.new_end_time}}` |
+| String | `reference_datetime` | `{{node_output.reference_datetime}}` |
+| String | `new_summary` | `{{node_output.new_summary}}` |
+| String | `reminder_id` | `{{node_output.id}}` |
+| String | `reminder_candidate` | `{{node_output.candidate}}` |
+
+**Step 4.** Connect to a new **HTTP Request** node (label: `Edit API`).
+
+- **URL**: `https://<your-domain>/api/reminder/edit-reminder`
+- **Body**:
+
+```json
+{
+  "id": "{{reminder_id}}",
+  "new_date": "{{date}}",
+  "candidates": "{{reminder_candidates}}",
+  "new_summary": "{{summary}}",
+  "new_end_time": "{{end_time}}",
+  "new_start_time": "{{start_time}}"
+}
+```
+
+**Step 5.** Connect to a new **Agent Assistant** node (label: `Response Formatting`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a strict, deterministic response generator. You do NOT have creative freedom. You must follow the exact rule below with no exceptions.
+>
+> **INPUT:** `{{node_output.status_code}}`
+>
+> **RULE (follow exactly, no deviation):**
+> - IF `status_code == 200` → output ONLY the fixed success message below, translated to match the user's language (`{{user.message}}`). Do not add, remove, or rephrase anything else.
+> - IF `status_code != 200` → output ONLY the fixed error message below, translated to match the user's language. Do not add, remove, or rephrase anything else.
+>
+> **FIXED SUCCESS MESSAGE:**
+> - Indonesian: "Reminder telah diedit."
+> - English: "Reminder has been edited."
+>
+> **FIXED ERROR MESSAGE:**
+> - Indonesian: "Maaf kak, ada kendala. Boleh coba ulangi lagi?"
+> - English: "Sorry, something went wrong. Could you try again?"
+>
+> **ABSOLUTE RESTRICTIONS:**
+> - Do NOT ask the user to rephrase, reformat, or clarify their original message, regardless of what the original message looked like.
+> - Do NOT reference or comment on the user's original phrasing, format, or wording in any way.
+> - Do NOT suggest example sentences or templates.
+> - Do NOT add explanations, reasoning, apologies beyond the fixed error message, or any extra sentence.
+> - Your ONLY job is to check status_code and output ONE of the two fixed messages, translated. Nothing else exists in your task.
+> - If you feel the urge to add clarifying guidance, suppress it — that is not your role in this step.
+>
+> **OUTPUT:** One sentence only. No greeting, no elaboration, no follow-up question.
+
+---
 
 ###### B.3 — `usr.reminderList` Branch
 
-| Step | Node Type | Label | Description |
-|------|-----------|-------|-------------|
-| 1 | Agent Assistant | `Grab Context` | <!-- TODO: Fill description --> |
-| 2 | Entity LLM | `Retrieve Params` | <!-- TODO: Fill description --> |
-| 3 | Set User Variable | `Store Params` | <!-- TODO: Fill description --> |
-| 4 | HTTP Request | `List API` | <!-- TODO: Fill description --> |
-| 5 | Set User Variable | `Store List` | <!-- TODO: Fill description --> |
-| 6 | Agent Assistant | `Formatting` | <!-- TODO: Fill description --> |
+**Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a data retrieval engine for calendar reminder listing requests. Extract ONLY the following fields from `{{user.message}}`. Do not generate any explanation, confirmation, or elaborating text — output structured data only.
+>
+> **Fields to retrieve:**
+>
+> | Field | Rules | Output Format |
+> |-------|-------|---------------|
+> | `timeMin` | Start of date range, resolved relative to `{{date}}`. Represents `00:00:00` of that day. If not mentioned, `null`. | `yyyy-mm-ddT00:00:00±hh:mm` |
+> | `timeMax` | End of date range, resolved relative to `{{date}}`. Represents `23:59:59` of that day. If not mentioned, `null`. | `yyyy-mm-ddT23:59:59±hh:mm` |
+> | `maxResults` | Specific count if user requests a limit. If not mentioned, `null`. | Integer |
+> | `reference_datetime` | Always `{{datetime}}`. Not user-extracted. | `yyyy-mm-ddThh:mm:ss` |
+>
+> **Common Phrase Interpretation:**
+>
+> | Phrase (ID / EN) | `timeMin` | `timeMax` |
+> |------------------|-----------|-----------|
+> | "hari ini" / "today" | Today `00:00:00` | Today `23:59:59` |
+> | "besok" / "tomorrow" | Tomorrow `00:00:00` | Tomorrow `23:59:59` |
+> | "minggu ini" / "this week" | Start of current week | End of current week |
+> | "bulan ini" / "this month" | First day of month | Last day of month |
+> | "yang akan datang" / "upcoming" / no period | `null` | `null` |
+
+**Step 2.** Connect to a new **Entity LLM** node (label: `Retrieve Params`).
+
+| Field Name | Description | Example |
+|------------|-------------|---------|
+| `timeMin` | User's minimal time of the period (could be null) | `2007-06-17T00:00:00+07:00` |
+| `timeMax` | User's maximal time of the period (could be null) | `2007-06-17T00:00:00+07:00` |
+| `maxResults` | User's desirable list limit of the reminders | `20`, `10`, `5` |
+
+**Step 3.** Connect to a new **Set User Variable** node (label: `Store Params`).
+
+| Type | Variable Name | Value |
+|------|---------------|-------|
+| String | `time_min` | `{{node_output.timeMin}}` |
+| String | `time_max` | `{{node_output.timeMax}}` |
+| String | `max_results` | `{{node_output.maxResults}}` |
+
+**Step 4.** Connect to a new **HTTP Request** node (label: `List API`).
+
+- **URL**: `https://<your-domain>/api/reminder/list-reminder`
+- **Body**:
+
+```json
+{
+  "timeMax": "{{time_max}}",
+  "timeMin": "{{time_min}}",
+  "maxResults": "{{max_results}}"
+}
+```
+
+**Step 5.** Connect to a new **Set User Variable** node (label: `Store List`).
+
+| Type | Variable Name | Value | Option |
+|------|---------------|-------|--------|
+| String | `reminders_list` | `{{node_output}}` | Persistent |
+
+**Step 6.** Connect to a new **Agent Assistant** node (label: `Formatting`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a response formatter for a calendar reminder chatbot. Convert the raw JSON reminder list from `{{node_output}}` into clean, human-readable text. No JSON, no code blocks, no raw field names.
+>
+> **Formatting Rules:**
+> 1. **Language** — Match `{{user.message}}` language and tone.
+> 2. **Empty list** — If `count` is `0`, tell the user they have no upcoming reminders.
+> 3. **Date/time** — Convert ISO to natural format (e.g., `"21 Juli 2026, pukul 08:00"` or `"July 21, 2026 at 8:00 AM"`). Use "hari ini"/"today" or "besok"/"tomorrow" when applicable. Omit seconds and timezone. Only show end time for longer events.
+> 4. **Structure** — Number each reminder. Show summary and date/time only.
+> 5. **`id` field** — NEVER display to user. Internal reference only.
+> 6. **`html_link` field** — Do not include unless user explicitly asked.
+> 7. **Closing** — End with a brief, natural offer to help further (e.g., edit or delete).
+
+---
 
 ###### B.4 — `usr.reminderDelete` Branch
 
-| Step | Node Type | Label | Description |
-|------|-----------|-------|-------------|
-| 1 | Agent Assistant | `Grab Context` | <!-- TODO: Fill description --> |
-| 2 | Entity LLM | `Retrieve Params` | <!-- TODO: Fill description --> |
-| 3 | Set User Variable | *(default)* | <!-- TODO: Fill description --> |
-| 4 | HTTP Request | `Delete API` | <!-- TODO: Fill description --> |
-| 5 | Agent Assistant | `Response Formatting` | <!-- TODO: Fill description --> |
+**Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a data retrieval engine for calendar reminder deletion requests. Match the user's message to the correct reminder from the provided list, and extract its ID. Do not generate any explanation, confirmation, or elaborating text — output structured data only.
+>
+> **INPUT CONTEXT:**
+> - User's message: `{{user.message}}`
+> - Available reminders (raw list from the system): `{{reminders_list}}`
+>   Each item has: `id`, `summary`, `start`, `end`, `status`
+>   IMPORTANT: the order of items in this list reflects the exact numbered order the user was shown (item 1 = first in list, item 2 = second in list, and so on).
+>
+> **TASK:**
+> - Identify which reminder the user is referring to, using ANY of the following reference types:
+>   1. Positional/ordinal reference — e.g. "nomor 2", "yang kedua", "reminder ke-3", "the second one", "number 1", "the first reminder". Use this ONLY to locate WHICH ITEM in the list the user means (by counting position) — never output the position number itself.
+>   2. Content reference — matching against `summary` text (e.g. "meeting sama klien" → "Meeting Sama Klien").
+>   3. Date/time reference — matching against `start`/`end` (e.g. "yang jam 8 pagi" → a reminder starting at 08:00, "yang besok" → a reminder on tomorrow's date).
+>   4. Combined references — e.g. "yang kedua yang meeting itu" combines positional + content, both should point to the same item for a confident match.
+>
+> **CRITICAL OUTPUT RULE — READ CAREFULLY:**
+> - The `id` field in your output must ALWAYS be the exact value of that item's `id` property from `{{reminders_list}}` — a long alphanumeric string (e.g. `2ksvcdivbo5ueo40ln7t53kai0`).
+> - NEVER output a position number (like "1", "2", "3") as the id, even if the user referred to the reminder by its position.
+> - The position/ordinal reference is only used internally to FIND the correct item — the actual `id` property of THAT item is what gets returned, not the position count.
+>
+> **EXAMPLE:**
+> Given this reminders_list:
+> ```json
+> [
+>   {"id": "g1gguuk0tbpkhqvv83nhmo3g9c", "summary": "Test", ...},
+>   {"id": "2ksvcdivbo5ueo40ln7t53kai0", "summary": "Main", ...}
+> ]
+> ```
+> User says: "hapus reminder nomor 2"
+> → Step 1: "nomor 2" refers to the 2nd item in the list (position 2)
+> → Step 2: the 2nd item's actual id field is `2ksvcdivbo5ueo40ln7t53kai0`
+> → Correct output: `{"id": "2ksvcdivbo5ueo40ln7t53kai0", "candidates": []}`
+> → WRONG output (do not do this): `{"id": "2", "candidates": []}`
+>
+> **RULES:**
+> - If exactly one reminder clearly matches (by any reference type above), return its ACTUAL `id` property value (never a position number).
+> - If the user's message is ambiguous and could match more than one reminder, return `id: null` and list the possible matching ACTUAL id values in `candidates`.
+> - If no reminder in the list matches the user's message at all, return `id: null` and `candidates: []`.
+> - If the user gives a positional reference (e.g. "nomor 2") that is out of range for the list (e.g. list only has 1 item but user said "nomor 3"), return `id: null` and `candidates: []`.
+> - Do not fabricate an `id` that isn't present in `{{reminders_list}}`.
+> - No natural language response. No greeting. No confirmation message. Output data only.
+>
+> **OUTPUT FORMAT (strict JSON):**
+> ```json
+> {
+>   "id": "string" | null,
+>   "candidates": ["string", ...]
+> }
+> ```
+
+**Step 2.** Connect to a new **Entity LLM** node (label: `Retrieve Params`).
+
+| Field Name | Description | Example |
+|------------|-------------|---------|
+| `id` | The reminder ID | — |
+| `candidate` | Reminder candidate(s) | — |
+
+**Step 3.** Connect to a new **Set User Variable** node.
+
+| Type | Variable Name | Value |
+|------|---------------|-------|
+| String | `reminder_id` | `{{node_output.id}}` |
+| String | `reminder_candidate` | `{{node_output.candidate}}` |
+
+**Step 4.** Connect to a new **HTTP Request** node (label: `Delete API`).
+
+- **URL**: `https://<your-domain>/api/reminder/delete-reminder`
+- **Body**:
+
+```json
+{
+  "id": "{{reminder_id}}",
+  "candidates": "{{reminder_candidate}}"
+}
+```
+
+**Step 5.** Connect to a new **Agent Assistant** node (label: `Response Formatting`).
+
+- **Embed Knowledge Base**: ❌ Disabled
+- **Task for AI**:
+
+> You are a strict, deterministic response generator. You do NOT have creative freedom. You must follow the exact rule below with no exceptions.
+>
+> **INPUT:** `{{node_output.status_code}}`
+>
+> **RULE (follow exactly, no deviation):**
+> - IF `status_code == 200` → output ONLY the fixed success message below, translated to match the user's language (`{{user.message}}`). Do not add, remove, or rephrase anything else.
+> - IF `status_code != 200` → output ONLY the fixed error message below, translated to match the user's language. Do not add, remove, or rephrase anything else.
+>
+> **FIXED SUCCESS MESSAGE:**
+> - Indonesian: "Reminder telah dihapus."
+> - English: "Reminder has been deleted."
+>
+> **FIXED ERROR MESSAGE:**
+> - Indonesian: "Maaf kak, ada kendala. Boleh coba ulangi lagi?"
+> - English: "Sorry, something went wrong. Could you try again?"
+>
+> **ABSOLUTE RESTRICTIONS:**
+> - Do NOT ask the user to rephrase, reformat, or clarify their original message, regardless of what the original message looked like.
+> - Do NOT reference or comment on the user's original phrasing, format, or wording in any way.
+> - Do NOT suggest example sentences or templates.
+> - Do NOT add explanations, reasoning, apologies beyond the fixed error message, or any extra sentence.
+> - Your ONLY job is to check status_code and output ONE of the two fixed messages, translated. Nothing else exists in your task.
+> - If you feel the urge to add clarifying guidance, suppress it — that is not your role in this step.
+>
+> **OUTPUT:** One sentence only. No greeting, no elaboration, no follow-up question.
+
+---
 
 ###### B.5 — Fallback Branch
 
-| Step | Node Type | Label | Description |
-|------|-----------|-------|-------------|
-| 1 | Agent Assistant | `Fallback KB` | <!-- TODO: Fill description --> |
+**Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Fallback KB`).
+
+- **Embed Knowledge Base**: ✅ Enabled
+- **Task for AI**:
+
+> Answer using user's language.
+
+---
 
 ##### C. Global End
 
 1. Add a new **Response Formatter** node (label: `Global Formatting`).
+   - **Mode**: Default AI Text
 2. Connect **all** terminal Agent Assistant nodes from every branch to this node.
 3. Connect the **Response Formatter** node to a new **Auto Integration** node.
+   - **Source input**: From response formatter
 
 ### 6.5 Testing & Integration
 
@@ -555,6 +947,16 @@ Deletes a reminder event from Google Calendar.
   "error": "Reminder not found or already deleted"
 }
 ```
+
+---
+
+## Known Issues
+
+- **LLM non-determinism — instruction-following failure**
+  At some point, the `edit-reminder` and `delete-reminder` operations may fail when the AI fails to correctly fetch/extract the target reminder's `id`, even though the intended reminder exists in the list. This stems from inherent LLM non-determinism in the Agent Assistant / Entity LLM steps rather than a backend proxy bug.
+
+- **`reminders_list` variable is persistence-dependent**
+  The `reminders_list` variable is only populated/updated when the user goes through the `usr.reminderList` branch (i.e., explicitly lists/shows their reminders). If a user tries to directly edit or delete a reminder without listing it first, `reminders_list` may be stale, empty, or mismatched, causing the `id` matching in the Edit/Delete `Grab Context` steps to fail or resolve to the wrong reminder.
 
 ---
 
