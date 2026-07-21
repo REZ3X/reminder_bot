@@ -17,7 +17,6 @@ function unwrap(value: unknown): string | undefined {
   return String(value);
 }
 
-// Guards against every "meant to be empty"
 function isEmpty(value: unknown): boolean {
   if (value == null) return true;
   const str = String(value).trim().toLowerCase();
@@ -65,8 +64,6 @@ export async function POST(request: NextRequest) {
 
     const calendar = google.calendar({ version: 'v3', auth });
 
-    // GUARD: patchBody only ever receives fields explicitly marked non-empty.
-    // Anything empty is simply never added — patch() leaves it untouched on Google's side.
     const patchBody: Record<string, any> = {};
 
     if (!isEmpty(newSummary)) {
@@ -94,7 +91,7 @@ export async function POST(request: NextRequest) {
       start: res.data.start,
       end: res.data.end,
       html_link: res.data.htmlLink,
-      fields_updated: Object.keys(patchBody), // debugging/confirmation messages
+      fields_updated: Object.keys(patchBody),
     });
 
   } catch (error: any) {

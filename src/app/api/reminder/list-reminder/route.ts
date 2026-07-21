@@ -17,7 +17,6 @@ function unwrap(value: unknown): string | undefined {
   return String(value);
 }
 
-// Catches every "meant to be empty"
 function isEmpty(value: unknown): boolean {
   if (value == null) return true;
   const str = String(value).trim().toLowerCase();
@@ -31,9 +30,8 @@ function isEmpty(value: unknown): boolean {
   );
 }
 
-// Ensures a timestamp has a timezone offset; returns undefined if the input is empty
 function ensureOffset(value: unknown, offset: string): string | undefined {
-  if (isEmpty(value)) return undefined; // guard
+  if (isEmpty(value)) return undefined; 
   const str = String(value);
   if (/[+-]\d{2}:\d{2}$/.test(str) || str.endsWith('Z')) {
     return str;
@@ -45,7 +43,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    const DEFAULT_OFFSET = '+07:00'; // Asia/Jakarta
+    const DEFAULT_OFFSET = '+07:00'; 
 
     const timeMinRaw = unwrap(body.timeMin);
     const timeMaxRaw = unwrap(body.timeMax);
