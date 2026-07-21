@@ -14,6 +14,7 @@ A Next.js backend proxy that integrates with **Google Calendar API** to provide 
 - [5. Chatbot Intent (Platform v2)](#5-chatbot-intent-platform-v2)
 - [6. Chatbot Workflow (Platform v3 / Agentic Platform)](#6-chatbot-workflow-platform-v3--agentic-platform)
 - [API Reference](#api-reference)
+- [Known Issues](#known-issues)
 
 ---
 
