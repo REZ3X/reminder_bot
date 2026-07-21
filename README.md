@@ -13,6 +13,7 @@ A Next.js backend proxy that integrates with **Google Calendar API** to provide 
 - [4. Deploy Backend Proxy](#4-deploy-backend-proxy)
 - [5. Chatbot Intent (Platform v2)](#5-chatbot-intent-platform-v2)
 - [6. Chatbot Workflow (Platform v3 / Agentic Platform)](#6-chatbot-workflow-platform-v3--agentic-platform)
+- [Webchat Bot Example](#webchat-bot-example)
 - [API Reference](#api-reference)
 - [Known Issues](#known-issues)
 
@@ -734,6 +735,14 @@ The following table describes the key workflow nodes used in this project. Click
 
 ---
 
+## Webchat Bot Example
+
+You can try out a live example of the reminder bot running on Botika Webchat:
+
+🔗 **[https://chat.botika.online/v3/vfwAFYw](https://chat.botika.online/v3/vfwAFYw)**
+
+---
+
 ## API Reference
 
 All endpoints use the **POST** method and accept/return **JSON**.
@@ -958,9 +967,6 @@ Deletes a reminder event from Google Calendar.
 
 - **`reminders_list` variable is persistence-dependent**
   The `reminders_list` variable is only populated/updated when the user goes through the `usr.reminderList` branch (i.e., explicitly lists/shows their reminders). If a user tries to directly edit or delete a reminder without listing it first, `reminders_list` may be stale, empty, or mismatched, causing the `id` matching in the Edit/Delete `Grab Context` steps to fail or resolve to the wrong reminder.
-
-- **No API Key Setup**
-  This backend proxy still does not implement any API key or authentication mechanism. All endpoints are publicly accessible once deployed. Authentication will be added in a future update.
 
 ---
 
