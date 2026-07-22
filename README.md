@@ -17,6 +17,7 @@ A Next.js backend proxy that integrates with **Google Calendar API** to provide 
 - [Webchat Bot Example](#webchat-bot-example)
 - [API Reference](#api-reference)
 - [Known Issues](#known-issues)
+- [Solved Issues](#solved-issues)
 
 ---
 
@@ -379,6 +380,8 @@ The following table describes the key workflow nodes used in this project. Click
 
 **Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
 
+- **LLM Provider**: OpenAI
+- **LLM Model**: GPT-4o
 - **Embed Knowledge Base**: ❌ Disabled
 - **Task for AI**:
 
@@ -601,6 +604,8 @@ The following table describes the key workflow nodes used in this project. Click
 
 **Step 1.** Connect the branch to a new **Agent Assistant** node (label: `Grab Context`).
 
+- **LLM Provider**: OpenAI
+- **LLM Model**: GPT-4o
 - **Embed Knowledge Base**: ❌ Disabled
 - **Task for AI**:
 
@@ -969,9 +974,6 @@ Deletes a reminder event from Google Calendar.
 
 ## Known Issues
 
-- **LLM non-determinism — instruction-following failure**
-  At some point, the `edit-reminder` and `delete-reminder` operations may fail when the AI fails to correctly fetch/extract the target reminder's `id`, even though the intended reminder exists in the list. This stems from inherent LLM non-determinism in the Agent Assistant / Entity LLM steps rather than a backend proxy bug.
-
 - **`reminders_list` variable is persistence-dependent**
   The `reminders_list` variable is only populated/updated when the user goes through the `usr.reminderList` branch (i.e., explicitly lists/shows their reminders). If a user tries to directly edit or delete a reminder without listing it first, `reminders_list` may be stale, empty, or mismatched, causing the `id` matching in the Edit/Delete `Grab Context` steps to fail or resolve to the wrong reminder.
 
@@ -980,6 +982,28 @@ Deletes a reminder event from Google Calendar.
 
 ---
 
+## Solved Issues
+
+- **LLM non-determinism — instruction-following failure**
+  At some point, the `edit-reminder` and `delete-reminder` operations may fail when the AI fails to correctly fetch/extract the target reminder's `id`, even though the intended reminder exists in the list. This stems from inherent LLM non-determinism in the Agent Assistant / Entity LLM steps rather than a backend proxy bug.
+  **Solved (22 July 2026):** Resolved by using a different LLM model for the Agent Assistant, specifically OpenAI GPT-4o.
+
+---
+
 ## Working Bot Footage
 
-<!-- TODO: Add working bot footage/screenshots/recordings here -->
+- **Listing Reminder**
+![Listing Reminder in Webchat](public/chatbot/images/listc.png)
+![Google Calendar View](public/chatbot/images/listg.png)
+
+- **Create Reminder**
+![Create Reminder in Webchat](public/chatbot/images/createc.png)
+![Google Calendar View](public/chatbot/images/createg.png)
+
+- **Edit Reminder**
+![Edit Reminder in Webchat](public/chatbot/images/editc.png)
+![Google Calendar View](public/chatbot/images/editg.png)
+
+- **Delete Reminder**
+![Delete Reminder in Webchat](public/chatbot/images/deletec.png)
+![Google Calendar View](public/chatbot/images/deleteg.png)
