@@ -980,6 +980,6 @@ Deletes a reminder event from Google Calendar.
 
 ---
 
-## Working Bot Footage
-
 <!-- TODO: Add working bot footage/screenshots/recordings here -->
+
+<!-- ## Working Bot Footage -->
